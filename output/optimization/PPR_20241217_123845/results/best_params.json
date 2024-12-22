@@ -1,0 +1,9 @@
+{
+    "best_params": {
+        "alpha": 0.023158004249229626,
+        "popularity_weight": 0.033105547887524185,
+        "num_iterations": 93,
+        "process_playtime": "log"
+    },
+    "best_score": 0.35127019349940686
+}
