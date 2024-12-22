@@ -44,6 +44,7 @@ This project found that complex graph-based recommendation methods, while theore
     *   **`src/results.ipynb`**: Model evaluation and results notebook.
     *   **`src/visualization.ipynb`**: Visualizations for paper and presentation.
 *    **`presentation.pdf`**: PDF of the associated presentation.
+*    **`report_source/`**: Source files for the associated report.
 *    **`report.pdf`**: PDF of the associated paper.
 *   **`requirements.txt`**: Python dependencies.
 *   **`README.md`**: This file.
