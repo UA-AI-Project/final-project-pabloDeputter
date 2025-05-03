@@ -1,0 +1,11 @@
+{
+    "best_params": {
+        "alpha1": 0.04052983557401711,
+        "alpha2": 0.0,
+        "stage1_k": 148,
+        "popularity_weight": 0.0,
+        "num_iterations": 271,
+        "process_playtime": "log"
+    },
+    "best_score": 0.3637201970705332
+}

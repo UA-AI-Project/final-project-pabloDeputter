@@ -1,0 +1,18 @@
+{
+    "best_params": {
+        "alphas": [
+            0.022625538386329365,
+            0.3015889812327148,
+            0.0
+        ],
+        "alpha_weights": [
+            1.0,
+            0.0,
+            0.0
+        ],
+        "popularity_weight": 0.0,
+        "num_iterations": 106,
+        "process_playtime": "log"
+    },
+    "best_score": 0.3642752968139164
+}
