@@ -1,8 +1,7 @@
-import pandas as pd
 import logging
-
 from abc import ABC, abstractmethod
-from typing import List, Dict, Union
+
+import pandas as pd
 
 
 class Recommender(ABC):
@@ -27,9 +26,7 @@ class Recommender(ABC):
 
         This method configures the logger to output messages to the console.
         """
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
-        )
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s")
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -49,7 +46,9 @@ class Recommender(ABC):
         pass
 
     @abstractmethod
-    def predict(self, users: List[Union[int, str]], n_items: int = 20, **kwargs) -> Dict[Union[int, str], List[Union[int, str]]]:
+    def predict(
+        self, users: list[int | str], n_items: int = 20, **kwargs
+    ) -> dict[int | str, list[int | str]]:
         """
         Generates item recommendations for the specified users.
 

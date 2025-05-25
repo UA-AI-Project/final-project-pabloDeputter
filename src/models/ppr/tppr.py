@@ -1,7 +1,7 @@
+
 import torch
 
-from typing import Optional
-from .ppr import PPR
+from src.models.ppr.ppr import PPR
 
 
 class TwoPhasePPR(PPR):
@@ -23,15 +23,15 @@ class TwoPhasePPR(PPR):
     """
 
     def __init__(
-            self,
-            alpha1: float = 0.3,
-            alpha2: float = 0.7,
-            stage1_k: int = 100,
-            num_iterations: int = 100,
-            popularity_weight: float = 0.2,
-            interaction_weight_processing: Optional[str] = 'log',
-            batch_size: int = 1024):
-
+        self,
+        alpha1: float = 0.3,
+        alpha2: float = 0.7,
+        stage1_k: int = 100,
+        num_iterations: int = 100,
+        popularity_weight: float = 0.2,
+        interaction_weight_processing: str | None = "log",
+        batch_size: int = 1024,
+    ):
         # Validate parameters
         if not 0 <= alpha1 <= 1:
             raise ValueError(f"alpha1 must be between 0 and 1, got {alpha1}")
@@ -46,7 +46,7 @@ class TwoPhasePPR(PPR):
             num_iterations=num_iterations,
             popularity_weight=popularity_weight,
             interaction_weight_processing=interaction_weight_processing,
-            batch_size=batch_size
+            batch_size=batch_size,
         )
 
         self.alpha1 = alpha1
@@ -67,8 +67,9 @@ class TwoPhasePPR(PPR):
         ppr1 = personalization_vector.clone()
 
         for _ in range(self.num_iterations):
-            ppr1_next = self.alpha1 * (ppr1 @ self._iu_matrix @ self._ui_matrix) + \
-                (1 - self.alpha1) * personalization_vector
+            ppr1_next = (
+                self.alpha1 * (ppr1 @ self._iu_matrix @ self._ui_matrix) + (1 - self.alpha1) * personalization_vector
+            )
 
             if torch.allclose(ppr1, ppr1_next, atol=1e-7):
                 self.logger.info(f"Converged after {_ + 1} iterations")
@@ -77,11 +78,7 @@ class TwoPhasePPR(PPR):
             ppr1 = ppr1_next
 
         # Get top-k items from first phase
-        _, top_k_indices = torch.topk(
-            ppr1,
-            min(self.stage1_k, ppr1.size(-1)),
-            dim=-1
-        )
+        _, top_k_indices = torch.topk(ppr1, min(self.stage1_k, ppr1.size(-1)), dim=-1)
 
         # Create new personalization vector for phase 2
         personalization2 = torch.zeros_like(personalization_vector)
@@ -91,8 +88,7 @@ class TwoPhasePPR(PPR):
         ppr2 = personalization2.clone()
 
         for _ in range(self.num_iterations):
-            ppr2_next = self.alpha2 * (ppr2 @ self._iu_matrix @ self._ui_matrix) + \
-                (1 - self.alpha2) * personalization2
+            ppr2_next = self.alpha2 * (ppr2 @ self._iu_matrix @ self._ui_matrix) + (1 - self.alpha2) * personalization2
 
             if torch.allclose(ppr2, ppr2_next, atol=1e-7):
                 self.logger.info(f"Converged after {_ + 1} iterations")
@@ -104,8 +100,6 @@ class TwoPhasePPR(PPR):
         final_ppr = (ppr1 + ppr2) / 2
 
         # Sanity check: ensure output dimensions match input
-        assert final_ppr.shape == personalization_vector.shape, \
-            f"PPR shape mismatch: expected {
-                personalization_vector.shape}, got {final_ppr.shape}"
+        assert final_ppr.shape == personalization_vector.shape, f"PPR shape mismatch: expected {personalization_vector.shape}, got {final_ppr.shape}"  # noqa: E501
 
         return final_ppr

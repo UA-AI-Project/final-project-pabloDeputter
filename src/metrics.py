@@ -2,20 +2,18 @@
 
 
 import math
+from collections import Counter
+
 import numpy as np
 import sklearn.metrics
-
-from collections import Counter
 from scipy.sparse import csr_matrix
 
-
-'''
+"""
 ########################    ACCURACY@20    ########################
-'''
+"""
 
 
-def get_ndcg_user(preds: list[int], truths: list[int], k: int,
-                  idcg_ls: list[float], log2_inv: list[float]) -> float:
+def get_ndcg_user(preds: list[int], truths: list[int], k: int, idcg_ls: list[float], log2_inv: list[float]) -> float:
     """
     compute the NDCG for a list of predictions and truths
     :param preds: the prediction items of the user
@@ -50,8 +48,7 @@ def get_ndcg_user(preds: list[int], truths: list[int], k: int,
     return dcg / idcg
 
 
-def get_ndcg(pred: dict[int, list[int]], truth: dict[int, list[int]],
-             k: int) -> float:
+def get_ndcg(pred: dict[int, list[int]], truth: dict[int, list[int]], k: int) -> float:
     """
     Compute the Normalized Discounted Cumulative Gain (NDCG) for a given prediction and truth.
     src: https://recpack.froomle.ai/generated/recpack.metrics.NDCGK.html
@@ -73,14 +70,12 @@ def get_ndcg(pred: dict[int, list[int]], truth: dict[int, list[int]],
         if user not in truth:
             continue
 
-        total_ndcg += get_ndcg_user(pred[user], truth[user], k, idcg_ls,
-                                    log2_inv)
+        total_ndcg += get_ndcg_user(pred[user], truth[user], k, idcg_ls, log2_inv)
 
     return total_ndcg / len(truth.keys())
 
 
-def _get_calibrated_recall_user(preds: list[int], truths: list[int],
-                                k: int) -> float:
+def _get_calibrated_recall_user(preds: list[int], truths: list[int], k: int) -> float:
     # depending on the list that is empty, the recall is 0 or 1
     if not len(truths):
         return 1.0
@@ -100,8 +95,7 @@ def _get_calibrated_recall_user(preds: list[int], truths: list[int],
     return recall / min(len(truths), k)
 
 
-def get_calibrated_recall(pred: dict[int, list[int]],
-                          truth: dict[int, list[int]], k: int) -> float:
+def get_calibrated_recall(pred: dict[int, list[int]], truth: dict[int, list[int]], k: int) -> float:
     """
     Compute the recall of a given prediction.
     src: https://recpack.froomle.ai/generated/recpack.metrics.CalibratedRecallK.html#recpack.metrics.CalibratedRecallK
@@ -124,9 +118,9 @@ def get_calibrated_recall(pred: dict[int, list[int]],
     return total_recall / len(truth.keys())
 
 
-'''
+"""
 ########################    DIVERSITY@20    ########################
-'''
+"""
 
 
 def get_coverage(pred: dict[int, list[int]], n_items: int, k: int) -> float:
@@ -146,8 +140,7 @@ def get_coverage(pred: dict[int, list[int]], n_items: int, k: int) -> float:
     return len(items) / n_items
 
 
-def _get_intra_list_similarity_user(preds: list[int], item_sim: np.ndarray,
-                                    k: int) -> float:
+def _get_intra_list_similarity_user(preds: list[int], item_sim: np.ndarray, k: int) -> float:
     """
     calculate intra list similarity using the history of item interactions
     :param preds: the predictions for a single user
@@ -164,7 +157,7 @@ def _get_intra_list_similarity_user(preds: list[int], item_sim: np.ndarray,
     for i in range(k):
         for j in range(i + 1, k):
             if preds[i] >= item_sim.shape[0] or preds[j] >= item_sim.shape[0]:
-                print('out of bounds')
+                print("out of bounds")
                 continue
             intra_list_similarity += item_sim[preds[i], preds[j]]
 
@@ -175,8 +168,7 @@ def _get_intra_list_similarity_user(preds: list[int], item_sim: np.ndarray,
     return intra_list_similarity / denominator
 
 
-def get_intra_list_similarity(pred: dict[int, list[int]], ui_mat,
-                              k: int) -> float:
+def get_intra_list_similarity(pred: dict[int, list[int]], ui_mat, k: int) -> float:
     """
     calculate intra list diversity using information about the items
     define an item by its user-item interaction vector
@@ -196,16 +188,15 @@ def get_intra_list_similarity(pred: dict[int, list[int]], ui_mat,
     for user in relevant_users:
         if user not in pred:
             continue
-        intra_list_similarity += _get_intra_list_similarity_user(pred[user],
-                                                                 item_dist, k)
+        intra_list_similarity += _get_intra_list_similarity_user(pred[user], item_dist, k)
 
     # average over all users
     return intra_list_similarity / len(relevant_users)
 
 
-'''
+"""
 ########################    FAIRNESS@20    ########################
-'''
+"""
 
 
 def calc_gini_index(x: np.array) -> float:
@@ -257,7 +248,7 @@ def get_publisher_fairness(pred: dict, i2p_dict: dict, k: int) -> float:
     # group the predictions per publisher
     pred_per_publisher = Counter()
     for user in pred.keys():
-        preds = pred[user][:min(k, len(pred[user]))]
+        preds = pred[user][: min(k, len(pred[user]))]
         if not len(preds):
             continue
 
@@ -270,13 +261,12 @@ def get_publisher_fairness(pred: dict, i2p_dict: dict, k: int) -> float:
     return gini
 
 
-'''
+"""
 ########################    NOVELTY@20    ########################
-'''
+"""
 
 
-def get_novelty(pred: dict[int, list[int]], train_ui_mat: csr_matrix,
-                test_in_ui_mat: csr_matrix, k: int) -> float:
+def get_novelty(pred: dict[int, list[int]], train_ui_mat: csr_matrix, test_in_ui_mat: csr_matrix, k: int) -> float:
     """
     src: https://dl.acm.org/doi/pdf/10.1145/1944339.1944341 (3.2)
     we use cosine distance as the distance measure
@@ -316,5 +306,3 @@ def get_novelty(pred: dict[int, list[int]], train_ui_mat: csr_matrix,
         total_novelty += user_novelty / max(cnt, 1)
 
     return total_novelty / len(pred.keys())  # average over all users
-
-

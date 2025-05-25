@@ -1,13 +1,11 @@
-import pandas as pd
-import numpy as np
-import torch
 import gc
 
+import pandas as pd
+import torch
 from torch.amp import autocast
 from tqdm import tqdm
-from typing import List, Dict, Tuple, Union
 
-from .recommender import Recommender
+from src.models.recommender import Recommender
 
 
 class ItemKNN(Recommender):
@@ -26,8 +24,7 @@ class ItemKNN(Recommender):
         self._item_similarity_matrix = None
         self._user_item_matrix = None
         self._popular_items = None
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __del__(self):
         """
@@ -53,28 +50,23 @@ class ItemKNN(Recommender):
         self.logger.info("Creating user-item matrix...")
 
         # Map indices
-        user_indices = df['user_id'].map(self._user_mapping).values
-        item_indices = df['item_id'].map(self._item_mapping).values
+        user_indices = df["user_id"].map(self._user_mapping).values
+        item_indices = df["item_id"].map(self._item_mapping).values
 
         # Create sparse interaction matrix on GPU
         dtype = torch.float16 if self.use_half_precision else torch.float32
-        matrix = torch.zeros(
-            (len(self._raw_user_ids), len(self._raw_item_ids)),
-            device=self.device,
-            dtype=dtype
-        )
+        matrix = torch.zeros((len(self._raw_user_ids), len(self._raw_item_ids)), device=self.device, dtype=dtype)
 
         # Use binary interactions for simplicity and memory efficiency
-        with autocast(device_type='cuda', enabled=self.use_half_precision):
+        with autocast(device_type="cuda", enabled=self.use_half_precision):
             matrix[user_indices, item_indices] = 1
 
         if torch.cuda.is_available():
-            self.logger.info(f"GPU Memory after matrix creation: {
-                             torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            self.logger.info(f"GPU Memory after matrix creation: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
 
         return matrix
 
-    def _getSimilarItems(self, item_id: Union[int, str], n: int = 10) -> List[Tuple[Union[int, str], float]]:
+    def _getSimilarItems(self, item_id: int | str, n: int = 10) -> list[tuple[int | str, float]]:
         """
         Gets the most similar items for a given item.
 
@@ -87,16 +79,15 @@ class ItemKNN(Recommender):
 
         item_idx = self._item_mapping[item_id]
 
-        with autocast(device_type='cuda', enabled=self.use_half_precision):
+        with autocast(device_type="cuda", enabled=self.use_half_precision):
             similarities = self._item_similarity_matrix[item_idx]
-            top_values, top_indices = torch.topk(similarities, k=n+1)
+            top_values, top_indices = torch.topk(similarities, k=n + 1)
 
         # Convert to CPU and remove the item itself
         top_values = top_values.cpu().numpy()[1:]
         top_indices = top_indices.cpu().numpy()[1:]
 
-        return [(self._raw_item_ids[idx], sim)
-                for idx, sim in zip(top_indices, top_values)]
+        return [(self._raw_item_ids[idx], sim) for idx, sim in zip(top_indices, top_values, strict=False)]
 
     def _computeItemSimilarity(self) -> None:
         """
@@ -111,14 +102,10 @@ class ItemKNN(Recommender):
 
         # Initialize similarity matrix
         dtype = torch.float16 if self.use_half_precision else torch.float32
-        self._item_similarity_matrix = torch.zeros(
-            (n_items, n_items),
-            device=self.device,
-            dtype=dtype
-        )
+        self._item_similarity_matrix = torch.zeros((n_items, n_items), device=self.device, dtype=dtype)
 
         # Compute similarities in batches
-        with autocast(device_type='cuda', enabled=self.use_half_precision):
+        with autocast(device_type="cuda", enabled=self.use_half_precision):
             for i in tqdm(range(0, n_items, batch_size), desc="Computing Item Similarities"):
                 end_idx = min(i + batch_size, n_items)
                 batch = self._user_item_matrix[:, i:end_idx].T
@@ -137,21 +124,20 @@ class ItemKNN(Recommender):
                 if i % (batch_size * 4) == 0:
                     self._clearGPUMemory()
 
-    def _computePopularItems(self) -> List[Union[int, str]]:
+    def _computePopularItems(self) -> list[int | str]:
         """
         Computes list of popular items for cold-start recommendations.
 
         :return: list of item IDs sorted by popularity
         """
         self.logger.info("Computing popular items...")
-        with autocast(device_type='cuda', enabled=self.use_half_precision):
+        with autocast(device_type="cuda", enabled=self.use_half_precision):
             item_counts = torch.sum(self._user_item_matrix, dim=0)
             popular_items_idx = torch.argsort(item_counts, descending=True)
 
-        return [self._raw_item_ids[idx.item()]
-                for idx in popular_items_idx.cpu()]
+        return [self._raw_item_ids[idx.item()] for idx in popular_items_idx.cpu()]
 
-    def fit(self, df: pd.DataFrame, user_id_column: str = 'user_id', item_id_column: str = 'item_id') -> None:
+    def fit(self, df: pd.DataFrame, user_id_column: str = "user_id", item_id_column: str = "item_id") -> None:
         """
         Fits the recommender by calculating item similarity with memory optimizations.
 
@@ -161,20 +147,16 @@ class ItemKNN(Recommender):
         """
         # Sanity checks
         if user_id_column not in df.columns:
-            raise ValueError(f"User ID column '{
-                             user_id_column}' not found in input DataFrame.")
+            raise ValueError(f"User ID column '{user_id_column}' not found in input DataFrame.")
         if item_id_column not in df.columns:
-            raise ValueError(f"Item ID column '{
-                             item_id_column}' not found in input DataFrame.")
+            raise ValueError(f"Item ID column '{item_id_column}' not found in input DataFrame.")
 
         # Create mappings for user and item IDs to internal indices
         self._raw_user_ids = df[user_id_column].unique()
         self._raw_item_ids = df[item_id_column].unique()
 
-        self._item_mapping = {item_id: idx for idx,
-                              item_id in enumerate(self._raw_item_ids)}
-        self._user_mapping = {user_id: idx for idx,
-                              user_id in enumerate(self._raw_user_ids)}
+        self._item_mapping = {item_id: idx for idx, item_id in enumerate(self._raw_item_ids)}
+        self._user_mapping = {user_id: idx for idx, user_id in enumerate(self._raw_user_ids)}
 
         # Create interaction matrix
         self._user_item_matrix = self._createUserItemMatrix(df)
@@ -188,7 +170,7 @@ class ItemKNN(Recommender):
         # Clear memory
         self._clearGPUMemory()
 
-    def predict(self, users: List[Union[int, str]], n_items: int = 20) -> Dict[Union[int, str], List[Union[int, str]]]:
+    def predict(self, users: list[int | str], n_items: int = 20) -> dict[int | str, list[int | str]]:
         """
         Generates item recommendations for a list of users with efficient batching.
 
@@ -203,10 +185,10 @@ class ItemKNN(Recommender):
         batch_size = min(self.batch_size, len(users))
 
         for i in tqdm(range(0, len(users), batch_size), desc="Generating recommendations"):
-            batch_users = users[i:i + batch_size]
+            batch_users = users[i : i + batch_size]
             batch_predictions = {}
 
-            with autocast(device_type='cuda', enabled=self.use_half_precision):
+            with autocast(device_type="cuda", enabled=self.use_half_precision):
                 for user_id in batch_users:
                     if user_id not in self._user_mapping:
                         # Cold start: use popular items
@@ -214,8 +196,7 @@ class ItemKNN(Recommender):
                         continue
 
                     user_idx = self._user_mapping[user_id]
-                    user_items = self._user_item_matrix[user_idx].nonzero().squeeze(
-                        1)
+                    user_items = self._user_item_matrix[user_idx].nonzero().squeeze(1)
 
                     if len(user_items) == 0:
                         # No interactions: use popular items
@@ -226,7 +207,7 @@ class ItemKNN(Recommender):
                     item_scores = torch.zeros(
                         len(self._raw_item_ids),
                         device=self.device,
-                        dtype=self._item_similarity_matrix.dtype
+                        dtype=self._item_similarity_matrix.dtype,
                     )
 
                     # Sum similarities from interacted items
@@ -234,12 +215,11 @@ class ItemKNN(Recommender):
                         item_scores += self._item_similarity_matrix[item_idx]
 
                     # Zero out items the user has already interacted with
-                    item_scores[user_items] = -float('inf')
+                    item_scores[user_items] = -float("inf")
 
                     # Get top items
                     _, top_indices = torch.topk(item_scores, k=n_items)
-                    top_items = [self._raw_item_ids[idx.item()]
-                                 for idx in top_indices.cpu()]
+                    top_items = [self._raw_item_ids[idx.item()] for idx in top_indices.cpu()]
 
                     batch_predictions[user_id] = top_items
 

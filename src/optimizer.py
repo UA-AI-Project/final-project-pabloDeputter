@@ -1,19 +1,19 @@
 import datetime
 import json
 import logging
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pandas as pd
-import time
-
-from typing import Any, Dict, List, Optional, Tuple, Union
-from pathlib import Path
-from dataclasses import dataclass, field
 from matplotlib import pyplot as plt
 from skopt import gp_minimize
 from skopt.space import Categorical, Integer, Real
 
-from models import Recommender
-from evaluator import Evaluator
+from src.evaluator import Evaluator
+from src.models import Recommender
 
 
 @dataclass
@@ -29,16 +29,14 @@ class OptimizationConfig:
     :param base_seed: base seed for reproducibility
     :param metric_weights: weights for each metric to calculate the final score
     """
+
     n_trials: int = 100
     n_random_starts: int = 10
-    sample_size: Optional[int] = 10000
+    sample_size: int | None = 10000
     n_cv_folds: int = 3
     val_size: float = 0.2
     base_seed: int = 42
-    metric_weights: Dict[str, float] = field(default_factory=lambda: {
-        'ndcg': 0.85,
-        'recall': 0.15
-    })
+    metric_weights: dict[str, float] = field(default_factory=lambda: {"ndcg": 0.85, "recall": 0.15})
 
 
 class BayesianOptimizer:
@@ -55,9 +53,9 @@ class BayesianOptimizer:
         self,
         recommender: Recommender,
         evaluator: Evaluator,
-        param_space: Dict[str, Union[Tuple, List]],
-        output_dir: Optional[str] = '../output/optimization',
-        config: Optional[OptimizationConfig] = None,
+        param_space: dict[str, tuple | list],
+        output_dir: str | None = "../output/optimization",
+        config: OptimizationConfig | None = None,
     ):
         self.recommender = recommender
         self.evaluator = evaluator
@@ -66,8 +64,7 @@ class BayesianOptimizer:
         self.config = config or OptimizationConfig()
 
         # Setup experiment tracking
-        self.experiment_name = f"{recommender.__name__}_{
-            datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.experiment_name = f"{recommender.__name__}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # Initialize directories
         self._setupDirectories()
@@ -93,10 +90,10 @@ class BayesianOptimizer:
 
         # Create subdirectories for different types of outputs
         self.dirs = {
-            'checkpoints': self.output_dir / 'checkpoints',
-            'visualizations': self.output_dir / 'visualizations',
-            'logs': self.output_dir / 'logs',
-            'results': self.output_dir / 'results'
+            "checkpoints": self.output_dir / "checkpoints",
+            "visualizations": self.output_dir / "visualizations",
+            "logs": self.output_dir / "logs",
+            "results": self.output_dir / "results",
         }
 
         for dir_path in self.dirs.values():
@@ -112,7 +109,7 @@ class BayesianOptimizer:
         self.logger.setLevel(logging.INFO)
 
         # File handler
-        fh = logging.FileHandler(self.dirs['logs'] / 'optimization.log')
+        fh = logging.FileHandler(self.dirs["logs"] / "optimization.log")
         fh.setLevel(logging.INFO)
 
         # Console handler
@@ -120,9 +117,7 @@ class BayesianOptimizer:
         ch.setLevel(logging.INFO)
 
         # Formatter
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
 
@@ -138,9 +133,9 @@ class BayesianOptimizer:
         """
         self.rng = np.random.RandomState(self.config.base_seed)
         self.seeds = {
-            'sampling': self.rng.randint(0, 2**32 - 1),
-            'cv': self.rng.randint(0, 2**32 - 1, size=self.config.n_cv_folds * 2),
-            'optimization': self.rng.randint(0, 2**32 - 1)
+            "sampling": self.rng.randint(0, 2**32 - 1),
+            "cv": self.rng.randint(0, 2**32 - 1, size=self.config.n_cv_folds * 2),
+            "optimization": self.rng.randint(0, 2**32 - 1),
         }
 
     def _setupResultsTracking(self):
@@ -148,7 +143,7 @@ class BayesianOptimizer:
         Initialize results tracking variables.
         """
         self.results = []
-        self.best_score = float('-inf')
+        self.best_score = float("-inf")
         self.best_params = None
         self.iteration_times = []
 
@@ -160,30 +155,28 @@ class BayesianOptimizer:
         self.dimensions = []
 
         # Check if we're dealing with MultiAlphaPPR case
-        if 'alphas' in self.param_space:
+        if "alphas" in self.param_space:
             # Handle MultiAlphaPPR case
-            for i, (lower, upper) in enumerate(self.param_space['alphas']):
+            for i, (lower, upper) in enumerate(self.param_space["alphas"]):
                 self.dimensions.append(Real(lower, upper, name=f"alpha_{i}"))
 
             # Create dimensions for weights
-            n_alphas = len(self.param_space['alphas'])
+            n_alphas = len(self.param_space["alphas"])
             for i in range(n_alphas):
                 self.dimensions.append(Real(0.0, 1.0, name=f"weight_{i}"))
 
         # Handle all other parameters
         for name, spec in self.param_space.items():
-            if name != 'alphas':  # Skip already processed alphas
+            if name != "alphas":  # Skip already processed alphas
                 if isinstance(spec, tuple):
                     if isinstance(spec[0], int):
-                        self.dimensions.append(
-                            Integer(spec[0], spec[1], name=name))
+                        self.dimensions.append(Integer(spec[0], spec[1], name=name))
                     else:
-                        self.dimensions.append(
-                            Real(spec[0], spec[1], name=name))
+                        self.dimensions.append(Real(spec[0], spec[1], name=name))
                 elif isinstance(spec, list) and isinstance(spec[0], str):
                     self.dimensions.append(Categorical(spec, name=name))
 
-    def _formatParams(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _formatParams(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Format parameters for the model to use.
 
@@ -197,24 +190,32 @@ class BayesianOptimizer:
         formatted = {}
 
         # Check if we're dealing with MultiAlphaPPR case (looking for alpha_0, alpha_1, etc.)
-        alpha_values = [(int(key.split('_')[1]), value) for key, value in params.items()
-                        if key.startswith('alpha_') and key[6:].isdigit()]
+        alpha_values = [
+            (int(key.split("_")[1]), value)
+            for key, value in params.items()
+            if key.startswith("alpha_") and key[6:].isdigit()
+        ]
 
-        weight_values = [(int(key.split('_')[1]), value) for key, value in params.items()
-                         if key.startswith('weight_') and key[7:].isdigit()]
+        weight_values = [
+            (int(key.split("_")[1]), value)
+            for key, value in params.items()
+            if key.startswith("weight_") and key[7:].isdigit()
+        ]
 
         if alpha_values and weight_values:
             # MultiAlphaPPR case
             alpha_values.sort(key=lambda x: x[0])
             weight_values.sort(key=lambda x: x[0])
 
-            formatted['alphas'] = [v[1] for v in alpha_values]
+            formatted["alphas"] = [v[1] for v in alpha_values]
             weights = np.array([v[1] for v in weight_values])
-            formatted['alpha_weights'] = list(weights / weights.sum())
+            formatted["alpha_weights"] = list(weights / weights.sum())
 
         # Handle all other parameters
         for key, value in params.items():
-            if not (key.startswith('alpha_') and key[6:].isdigit()) and not (key.startswith('weight_') and key[7:].isdigit()):
+            if not (key.startswith("alpha_") and key[6:].isdigit()) and not (
+                key.startswith("weight_") and key[7:].isdigit()
+            ):
                 if isinstance(value, list) and len(value) == 1:
                     formatted[key] = value[0]
                 else:
@@ -222,7 +223,7 @@ class BayesianOptimizer:
 
         return formatted
 
-    def _objective(self, x: List[float]) -> float:
+    def _objective(self, x: list[float]) -> float:
         """
         Objective function to minimize.
 
@@ -238,18 +239,16 @@ class BayesianOptimizer:
 
         try:
             # Convert hyperparameters to dictionary
-            params = dict(zip([dim.name for dim in self.dimensions], x))
+            params = dict(zip([dim.name for dim in self.dimensions], x, strict=False))
             # Format parameters
             formatted_params = self._formatParams(params)
 
             # Sanity check to make sure that all weights sum to 1
-            if 'alpha_weights' in formatted_params:
-                weight_sum = sum(formatted_params['alpha_weights'])
-                assert np.isclose(weight_sum, 1.0), f"Weight sum is not 1: {
-                    weight_sum}"
+            if "alpha_weights" in formatted_params:
+                weight_sum = sum(formatted_params["alpha_weights"])
+                assert np.isclose(weight_sum, 1.0), f"Weight sum is not 1: {weight_sum}"
 
-            self.logger.info(f"Starting iteration {
-                             iteration} with params: {formatted_params}")
+            self.logger.info(f"Starting iteration {iteration} with params: {formatted_params}")
 
             fold_scores = []
             fold_metrics = []
@@ -258,9 +257,7 @@ class BayesianOptimizer:
             if self.config.sample_size:
                 # Use sampling seed to ensure fairness across iterations
                 train_data = self.evaluator.createSampledDataset(
-                    self.evaluator.train_df,
-                    self.config.sample_size,
-                    seed=self.seeds['sampling']
+                    self.evaluator.train_df, self.config.sample_size, seed=self.seeds["sampling"]
                 )
             else:
                 train_data = self.evaluator.train_df.copy()
@@ -268,23 +265,17 @@ class BayesianOptimizer:
             # Run cross-validation
             for fold in range(self.config.n_cv_folds):
                 # Get seeds for this fold
-                split_seed = self.seeds['cv'][fold * 2]
-                fold_seed = self.seeds['cv'][fold * 2 + 1]
+                split_seed = self.seeds["cv"][fold * 2]
+                fold_seed = self.seeds["cv"][fold * 2 + 1]
 
                 # Create splits
                 train_split, val_split = self.evaluator.createValidationSplit(
-                    train_data,
-                    val_size=self.config.val_size,
-                    seed=split_seed
+                    train_data, val_size=self.config.val_size, seed=split_seed
                 )
 
-                val_in, val_out = self.evaluator.createFoldInSplit(
-                    val_split,
-                    seed=fold_seed
-                )
+                val_in, val_out = self.evaluator.createFoldInSplit(val_split, seed=fold_seed)
 
-                self.logger.info(
-                    f"Fold {fold + 1}: Training with params {formatted_params}")
+                self.logger.info(f"Fold {fold + 1}: Training with params {formatted_params}")
 
                 # Train and evaluate
                 recommender = self.recommender(**formatted_params)
@@ -295,19 +286,15 @@ class BayesianOptimizer:
                 metrics = self.evaluator._evaluateRecommendations(
                     recommendations,
                     {
-                        user: val_out[val_out['user_id'] == user]['item_id'].tolist() for user in val_out['user_id'].unique()
-                    }
-
+                        user: val_out[val_out["user_id"] == user]["item_id"].tolist()
+                        for user in val_out["user_id"].unique()
+                    },
                 )
 
                 # Calculate combined score for this fold using weights from config
-                fold_score = sum(
-                    weight * metrics[metric]
-                    for metric, weight in self.config.metric_weights.items()
-                )
+                fold_score = sum(weight * metrics[metric] for metric, weight in self.config.metric_weights.items())
 
-                self.logger.info(
-                    f"Fold {fold + 1} score: {fold_score:.4f} with metrics: {metrics}")
+                self.logger.info(f"Fold {fold + 1} score: {fold_score:.4f} with metrics: {metrics}")
                 fold_scores.append(fold_score)
                 fold_metrics.append(metrics)
 
@@ -316,39 +303,41 @@ class BayesianOptimizer:
             score_std = np.std(fold_scores)
 
             avg_metrics = {
-                'ndcg': np.mean([m['ndcg'] for m in fold_metrics]),
-                'recall': np.mean([m['recall'] for m in fold_metrics]),
-                'ndcg_std': np.std([m['ndcg'] for m in fold_metrics]),
-                'recall_std': np.std([m['recall'] for m in fold_metrics])
+                "ndcg": np.mean([m["ndcg"] for m in fold_metrics]),
+                "recall": np.mean([m["recall"] for m in fold_metrics]),
+                "ndcg_std": np.std([m["ndcg"] for m in fold_metrics]),
+                "recall_std": np.std([m["recall"] for m in fold_metrics]),
             }
 
             # Store results
             iteration_time = time.time() - start_time
             self.iteration_times.append(iteration_time)
 
-            self.logger.info(f"Iteration {iteration} finished in {
-                             iteration_time:.2f} seconds with score: {avg_score:.4f} and metrics: {avg_metrics}")
+            self.logger.info(
+                f"Iteration {iteration} finished in {iteration_time:.2f} seconds with score: {avg_score:.4f} and metrics: {avg_metrics}"  # noqa: E501
+            )
 
-            self.results.append({
-                'params': formatted_params,
-                'score': avg_score,
-                'score_std': score_std,
-                'iteration_time': iteration_time,
-                **avg_metrics
-            })
+            self.results.append(
+                {
+                    "params": formatted_params,
+                    "score": avg_score,
+                    "score_std": score_std,
+                    "iteration_time": iteration_time,
+                    **avg_metrics,
+                }
+            )
 
             # Update best score if this is better
             if avg_score > self.best_score:
                 self.best_score = avg_score
                 self.best_params = formatted_params
-                self.logger.info(f"New best score: {
-                                 avg_score:.4f} with params: {formatted_params}")
-
-            return -avg_score  # Minimize negative score
+                self.logger.info(f"New best score: {avg_score:.4f} with params: {formatted_params}")
+            # Minimize negative score
+            return -avg_score
 
         except Exception as e:
             self.logger.error(f"Error in iteration {iteration}: {str(e)}")
-            return float('inf')
+            return float("inf")
 
     def _convertToNative(self, obj: Any) -> Any:
         """
@@ -358,11 +347,12 @@ class BayesianOptimizer:
 
         :return: converted object
         """
-        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
-                            np.int16, np.int32, np.int64,
-                            np.uint8, np.uint16, np.uint32, np.uint64)):
+        if isinstance(
+            obj,
+            np.int_ | np.intc | np.intp | np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64,  # noqa: E501
+        ):
             return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        elif isinstance(obj, np.float_ | np.float16 | np.float32 | np.float64):
             return float(obj)
         elif isinstance(obj, (np.bool_)):
             return bool(obj)
@@ -386,19 +376,20 @@ class BayesianOptimizer:
         results_df = pd.DataFrame(self.results)
 
         # Save results CSV
-        results_df.to_csv(
-            self.dirs['checkpoints'] / f"results_iter_{iteration}.csv",
-            index=False
-        )
+        results_df.to_csv(self.dirs["checkpoints"] / f"results_iter_{iteration}.csv", index=False)
 
         # Save optimization state
-        with open(self.dirs['checkpoints'] / f"opt_state_{iteration}.json", 'w') as f:
-            json.dump({
-                'best_score': float(self.best_score),
-                'best_params': self._convertToNative(self.best_params),
-                'n_iterations': iteration,
-                'total_time': sum(self.iteration_times)
-            }, f, indent=4)
+        with open(self.dirs["checkpoints"] / f"opt_state_{iteration}.json", "w") as f:
+            json.dump(
+                {
+                    "best_score": float(self.best_score),
+                    "best_params": self._convertToNative(self.best_params),
+                    "n_iterations": iteration,
+                    "total_time": sum(self.iteration_times),
+                },
+                f,
+                indent=4,
+            )
 
     def _saveResults(self):
         """
@@ -406,15 +397,18 @@ class BayesianOptimizer:
         """
         # Save all results to CSV
         results_df = pd.DataFrame(self.results)
-        results_df.to_csv(self.dirs['results'] /
-                          "final_results.csv", index=False)
+        results_df.to_csv(self.dirs["results"] / "final_results.csv", index=False)
 
         # Save best parameters
-        with open(self.output_dir / "best_params.json", 'w') as f:
-            json.dump({
-                'best_params': self._convertToNative(self.best_params),
-                'best_score': float(self.best_score)
-            }, f, indent=4)
+        with open(self.output_dir / "best_params.json", "w") as f:
+            json.dump(
+                {
+                    "best_params": self._convertToNative(self.best_params),
+                    "best_score": float(self.best_score),
+                },
+                f,
+                indent=4,
+            )
 
         self.logger.info(f"Results saved to {self.dirs['results']}")
 
@@ -427,17 +421,16 @@ class BayesianOptimizer:
         results_df = pd.DataFrame(self.results)
 
         # Extract parameters from dictionary string
-        if 'params' in results_df.columns:
+        if "params" in results_df.columns:
             # If params is stored as string, evaluate it
-            if isinstance(results_df['params'].iloc[0], str):
-                results_df['params'] = results_df['params'].apply(eval)
+            if isinstance(results_df["params"].iloc[0], str):
+                results_df["params"] = results_df["params"].apply(eval)
 
             # Extract parameters into separate columns
-            param_df = pd.json_normalize(results_df['params'])
+            param_df = pd.json_normalize(results_df["params"])
 
             # Combine with original results
-            results_df = pd.concat(
-                [param_df, results_df.drop('params', axis=1)], axis=1)
+            results_df = pd.concat([param_df, results_df.drop("params", axis=1)], axis=1)
 
         return results_df
 
@@ -448,10 +441,10 @@ class BayesianOptimizer:
         :param results_df: DataFrame of optimization results
         """
         # Get parameter info from param_space
-        vector_params = {k: v for k, v in self.param_space.items()
-                         if isinstance(v, list) and isinstance(v[0], tuple)}
-        scalar_params = {k: v for k, v in self.param_space.items()
-                         if not isinstance(v, list) or not isinstance(v[0], tuple)}
+        vector_params = {k: v for k, v in self.param_space.items() if isinstance(v, list) and isinstance(v[0], tuple)}
+        scalar_params = {
+            k: v for k, v in self.param_space.items() if not isinstance(v, list) or not isinstance(v[0], tuple)
+        }
 
         # Process vector parameters
         for param_name, bounds in vector_params.items():
@@ -462,52 +455,45 @@ class BayesianOptimizer:
             fig = plt.figure(figsize=(18, 6 * n_rows))
             gs = plt.GridSpec(n_rows, 3, figure=fig)
 
-            fig.suptitle(f'Parameter Performance Analysis: {
-                         param_name}', fontsize=14)
+            fig.suptitle(f"Parameter Performance Analysis: {param_name}", fontsize=14)
 
             # Extract component values if they exist in results
             if param_name in results_df.columns:
-                component_values = {
-                    i: results_df[param_name].apply(lambda x: x[i])
-                    for i in range(n_components)
-                }
+                component_values = {i: results_df[param_name].apply(lambda x: x[i]) for i in range(n_components)}  # noqa: B023
 
                 # Plot each component
                 for comp_idx in range(n_components):
                     ax = fig.add_subplot(gs[comp_idx // 3, comp_idx % 3])
 
                     for metric, style in [
-                        ('score', {'color': 'purple', 'alpha': 0.5}),
-                        ('ndcg', {'color': 'blue', 'alpha': 0.3}),
-                        ('recall', {'color': 'green', 'alpha': 0.3})
+                        ("score", {"color": "purple", "alpha": 0.5}),
+                        ("ndcg", {"color": "blue", "alpha": 0.3}),
+                        ("recall", {"color": "green", "alpha": 0.3}),
                     ]:
                         ax.scatter(
                             component_values[comp_idx],
                             results_df[metric],
                             label=metric.upper(),
-                            **style
+                            **style,
                         )
 
                     # Add best parameter line if available
-                    if hasattr(self, 'best_params') and param_name in self.best_params:
+                    if hasattr(self, "best_params") and param_name in self.best_params:
                         best_value = self.best_params[param_name][comp_idx]
                         # Format best value based on type
-                        label_value = f'{best_value:.3f}' if isinstance(
-                            best_value, (int, float)) else str(best_value)
-                        ax.axvline(x=best_value, color='red', linestyle='--',
-                                   label=f'Best: {label_value}')
+                        label_value = f"{best_value:.3f}" if isinstance(best_value, int | float) else str(best_value)
+                        ax.axvline(x=best_value, color="red", linestyle="--", label=f"Best: {label_value}")
 
-                    ax.set_xlabel(f'{param_name}[{comp_idx}]')
-                    ax.set_ylabel('Metric Value')
+                    ax.set_xlabel(f"{param_name}[{comp_idx}]")
+                    ax.set_ylabel("Metric Value")
                     ax.grid(True, alpha=0.3)
-                    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
             plt.tight_layout()
             plt.savefig(
-                self.dirs['visualizations'] /
-                f"parameter_analysis_{param_name}.png",
-                bbox_inches='tight',
-                dpi=300
+                self.dirs["visualizations"] / f"parameter_analysis_{param_name}.png",
+                bbox_inches="tight",
+                dpi=300,
             )
             plt.close()
 
@@ -517,14 +503,15 @@ class BayesianOptimizer:
                 continue
 
             fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-            fig.suptitle(f'Parameter Performance Analysis: {
-                         param_name}', fontsize=14)
+            fig.suptitle(f"Parameter Performance Analysis: {param_name}", fontsize=14)
 
-            for idx, (metric, weight, title) in enumerate([
-                ('score', '', 'Weighted Score'),
-                ('ndcg', 'ndcg_std', 'NDCG@20'),
-                ('recall', 'recall_std', 'Recall@20')
-            ]):
+            for idx, (metric, weight, title) in enumerate(
+                [
+                    ("score", "", "Weighted Score"),
+                    ("ndcg", "ndcg_std", "NDCG@20"),
+                    ("recall", "recall_std", "Recall@20"),
+                ]
+            ):
                 ax = axes[idx]
 
                 if weight and weight in results_df.columns:
@@ -532,29 +519,18 @@ class BayesianOptimizer:
                         results_df[param_name],
                         results_df[metric],
                         yerr=results_df[weight],
-                        fmt='o',
+                        fmt="o",
                         alpha=0.5,
-                        label='Evaluations'
+                        label="Evaluations",
                     )
                 else:
-                    ax.scatter(
-                        results_df[param_name],
-                        results_df[metric],
-                        alpha=0.5,
-                        label='Evaluations'
-                    )
+                    ax.scatter(results_df[param_name], results_df[metric], alpha=0.5, label="Evaluations")
 
-                if hasattr(self, 'best_params') and param_name in self.best_params:
+                if hasattr(self, "best_params") and param_name in self.best_params:
                     best_value = self.best_params[param_name]
                     # Format best value based on type
-                    label_value = f'{best_value:.3f}' if isinstance(
-                        best_value, (int, float)) else str(best_value)
-                    ax.axvline(
-                        x=best_value,
-                        color='red',
-                        linestyle='--',
-                        label=f'Best: {label_value}'
-                    )
+                    label_value = f"{best_value:.3f}" if isinstance(best_value, int | float) else str(best_value)
+                    ax.axvline(x=best_value, color="red", linestyle="--", label=f"Best: {label_value}")
 
                 ax.set_xlabel(param_name)
                 ax.set_ylabel(title)
@@ -563,10 +539,9 @@ class BayesianOptimizer:
 
             plt.tight_layout()
             plt.savefig(
-                self.dirs['visualizations'] /
-                f"parameter_analysis_{param_name}.png",
-                bbox_inches='tight',
-                dpi=300
+                self.dirs["visualizations"] / f"parameter_analysis_{param_name}.png",
+                bbox_inches="tight",
+                dpi=300,
             )
             plt.close()
 
@@ -583,30 +558,29 @@ class BayesianOptimizer:
                         for each iteration
         """
         # Separate vector and scalar parameters
-        vector_params = {k: v for k, v in self.param_space.items()
-                         if isinstance(v, list) and isinstance(v[0], tuple)}
-        scalar_params = {k: v for k, v in self.param_space.items()
-                         if not isinstance(v, list) or not isinstance(v[0], tuple)}
+        vector_params = {k: v for k, v in self.param_space.items() if isinstance(v, list) and isinstance(v[0], tuple)}
+        scalar_params = {
+            k: v for k, v in self.param_space.items() if not isinstance(v, list) or not isinstance(v[0], tuple)
+        }
 
         # Create figure with subplots
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15))
 
         # Function to get parameter type and max value
         def get_param_info(param_name, values):
-            if isinstance(values.iloc[0], (str, list)):
+            if isinstance(values.iloc[0], str | list):
                 if isinstance(values.iloc[0], list):
                     try:
                         # Try to get max value for numeric lists
-                        max_val = max(max(float(x) if isinstance(x, (int, float)) else -1)
-                                      for x in values)
-                        return 'numeric', max_val
+                        max_val = max(max(float(x) if isinstance(x, int | float) else -1) for x in values)
+                        return "numeric", max_val
                     except (ValueError, TypeError):
-                        return 'categorical', None
-                return 'categorical', None
+                        return "categorical", None
+                return "categorical", None
             try:
-                return 'numeric', float(max(values))
+                return "numeric", float(max(values))
             except (ValueError, TypeError):
-                return 'categorical', None
+                return "categorical", None
 
         # Track parameters for each axis
         small_scale_params = []
@@ -617,10 +591,10 @@ class BayesianOptimizer:
         for param_name, bounds in vector_params.items():
             if param_name in results_df.columns:
                 for i in range(len(bounds)):
-                    values = results_df[param_name].apply(lambda x: x[i])
+                    values = results_df[param_name].apply(lambda x: x[i])  # noqa: B023
                     param_type, max_value = get_param_info(param_name, values)
 
-                    if param_type == 'categorical':
+                    if param_type == "categorical":
                         target_ax = ax3
                         target_list = categorical_params
                     else:
@@ -630,19 +604,18 @@ class BayesianOptimizer:
                     target_ax.plot(
                         results_df.index,
                         values,
-                        label=f'{param_name}[{i}]',
-                        marker='.',
-                        markersize=8
+                        label=f"{param_name}[{i}]",
+                        marker=".",
+                        markersize=8,
                     )
-                    target_list.append(f'{param_name}[{i}]')
+                    target_list.append(f"{param_name}[{i}]")
 
         # Plot scalar parameters
         for param_name in scalar_params:
             if param_name in results_df.columns:
-                param_type, max_value = get_param_info(
-                    param_name, results_df[param_name])
+                param_type, max_value = get_param_info(param_name, results_df[param_name])
 
-                if param_type == 'categorical':
+                if param_type == "categorical":
                     target_ax = ax3
                     target_list = categorical_params
                 else:
@@ -653,49 +626,44 @@ class BayesianOptimizer:
                     results_df.index,
                     results_df[param_name],
                     label=param_name,
-                    marker='.',
-                    markersize=8
+                    marker=".",
+                    markersize=8,
                 )
                 target_list.append(param_name)
 
         # Configure subplots
         if small_scale_params:
-            ax1.set_xlabel('Iteration')
-            ax1.set_ylabel('Parameter Value')
-            ax1.set_title('Small-scale Parameters (≤ 1)')
+            ax1.set_xlabel("Iteration")
+            ax1.set_ylabel("Parameter Value")
+            ax1.set_title("Small-scale Parameters (≤ 1)")
             ax1.grid(True, alpha=0.3)
-            ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax1.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             ax1.set_visible(False)
 
         if large_scale_params:
-            ax2.set_xlabel('Iteration')
-            ax2.set_ylabel('Parameter Value')
-            ax2.set_title('Large-scale Parameters (> 1)')
+            ax2.set_xlabel("Iteration")
+            ax2.set_ylabel("Parameter Value")
+            ax2.set_title("Large-scale Parameters (> 1)")
             ax2.grid(True, alpha=0.3)
-            ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             ax2.set_visible(False)
 
         if categorical_params:
-            ax3.set_xlabel('Iteration')
-            ax3.set_ylabel('Parameter Value')
-            ax3.set_title('Categorical Parameters')
+            ax3.set_xlabel("Iteration")
+            ax3.set_ylabel("Parameter Value")
+            ax3.set_title("Categorical Parameters")
             ax3.grid(True, alpha=0.3)
-            ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax3.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             ax3.set_visible(False)
 
         # Add parameter lists to figure title
-        plt.suptitle(
-            'Parameter Convergence During Optimization\n', fontsize=16)
+        plt.suptitle("Parameter Convergence During Optimization\n", fontsize=16)
 
         plt.tight_layout()
-        plt.savefig(
-            self.dirs['visualizations'] / "parameter_convergence.png",
-            dpi=300,
-            bbox_inches='tight'
-        )
+        plt.savefig(self.dirs["visualizations"] / "parameter_convergence.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def _plotMetricProgression(self, results_df: pd.DataFrame):
@@ -707,11 +675,10 @@ class BayesianOptimizer:
         plt.figure(figsize=(12, 6))
 
         # Plot each metric with error bars if available
-        metrics = [('ndcg', 'ndcg_std'), ('recall', 'recall_std'),
-                   ('score', 'score_std')]
-        colors = ['blue', 'green', 'red']
+        metrics = [("ndcg", "ndcg_std"), ("recall", "recall_std"), ("score", "score_std")]
+        colors = ["blue", "green", "red"]
 
-        for (metric, std_col), color in zip(metrics, colors):
+        for (metric, std_col), color in zip(metrics, colors, strict=False):
             if std_col in results_df.columns:
                 plt.errorbar(
                     results_df.index,
@@ -719,8 +686,8 @@ class BayesianOptimizer:
                     yerr=results_df[std_col],
                     label=metric.upper(),
                     color=color,
-                    marker='o',
-                    alpha=0.7
+                    marker="o",
+                    alpha=0.7,
                 )
             else:
                 plt.plot(
@@ -728,21 +695,17 @@ class BayesianOptimizer:
                     results_df[metric],
                     label=metric.upper(),
                     color=color,
-                    marker='o'
+                    marker="o",
                 )
 
-        plt.xlabel('Iteration')
-        plt.ylabel('Metric Value')
-        plt.title('Metric Progression Over Iterations')
+        plt.xlabel("Iteration")
+        plt.ylabel("Metric Value")
+        plt.title("Metric Progression Over Iterations")
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
 
-        plt.savefig(
-            self.dirs['visualizations'] / "metric_progression.png",
-            dpi=300,
-            bbox_inches='tight'
-        )
+        plt.savefig(self.dirs["visualizations"] / "metric_progression.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def _plotScoreDistribution(self, results_df: pd.DataFrame):
@@ -753,33 +716,23 @@ class BayesianOptimizer:
         """
         plt.figure(figsize=(10, 6))
 
-        plt.hist(
-            results_df['score'],
-            bins=30,
-            density=True,
-            alpha=0.7,
-            color='blue'
-        )
+        plt.hist(results_df["score"], bins=30, density=True, alpha=0.7, color="blue")
 
         plt.axvline(
             x=self.best_score,
-            color='red',
-            linestyle='--',
-            label=f'Best Score: {self.best_score:.4f}'
+            color="red",
+            linestyle="--",
+            label=f"Best Score: {self.best_score:.4f}",
         )
 
-        plt.xlabel('Score')
-        plt.ylabel('Density')
-        plt.title('Score Distribution')
+        plt.xlabel("Score")
+        plt.ylabel("Density")
+        plt.title("Score Distribution")
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
 
-        plt.savefig(
-            self.dirs['visualizations'] / "score_distribution.png",
-            dpi=300,
-            bbox_inches='tight'
-        )
+        plt.savefig(self.dirs["visualizations"] / "score_distribution.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def _createVisualizations(self):
@@ -796,8 +749,7 @@ class BayesianOptimizer:
         # 4. Score Distribution Plot
         self._plotScoreDistribution(results_df)
 
-        self.logger.info(f"Visualizations saved to {
-                         self.dirs['visualizations']}")
+        self.logger.info(f"Visualizations saved to {self.dirs['visualizations']}")
 
     def optimize(self):
         """
@@ -809,8 +761,7 @@ class BayesianOptimizer:
 
         :return: best parameters and score
         """
-        self.logger.info(f"Starting optimization for {
-                         self.recommender.__name__}")
+        self.logger.info(f"Starting optimization for {self.recommender.__name__}")
 
         # Run optimization
         self.opt_result = gp_minimize(
@@ -820,16 +771,15 @@ class BayesianOptimizer:
             n_random_starts=self.config.n_random_starts,
             noise=0.01,
             # Use seed for reproducibility
-            random_state=self.seeds['optimization'],
+            random_state=self.seeds["optimization"],
             callback=[self._checkpointCallback],
-            verbose=True
+            verbose=True,
         )
 
         # Save final results
         self._saveResults()
 
-        self.logger.info(f"Optimization finished. Best score: {
-            self.best_score:.4f} with params: {self.best_params}")
+        self.logger.info(f"Optimization finished. Best score: {self.best_score:.4f} with params: {self.best_params}")
 
         # Create visualizations
         self._createVisualizations()
@@ -838,22 +788,22 @@ class BayesianOptimizer:
 
 
 if __name__ == "__main__":
-    evaluator = Evaluator(
-        'data/raw/train_interactions.csv', 'data/raw/test_interactions_in.csv')
+    evaluator = Evaluator("data/raw/train_interactions.csv", "data/raw/test_interactions_in.csv")
 
     param_space = {
-        'alpha': (0.0, 0.75),
-        'popularity_weight': (0.0, 0.20),
-        'num_iterations': (75, 600),
-        'interaction_weight_processing': ['log']
+        "alpha": (0.0, 0.75),
+        "popularity_weight": (0.0, 0.20),
+        "num_iterations": (75, 600),
+        "interaction_weight_processing": ["log"],
     }
 
-    from models import PPR
+    from src.models import PPR
+
     optimizer = BayesianOptimizer(
         recommender=PPR,
         evaluator=evaluator,
         param_space=param_space,
-        output_dir='output/optimization',
+        output_dir="output/optimization",
         config=OptimizationConfig(
             n_trials=100,
             n_random_starts=10,
@@ -861,7 +811,7 @@ if __name__ == "__main__":
             n_cv_folds=3,
             val_size=0.2,
             base_seed=42,
-            metric_weights={'ndcg': 0.85, 'recall': 0.15},
-        )
+            metric_weights={"ndcg": 0.85, "recall": 0.15},
+        ),
     )
     optimizer.optimize()

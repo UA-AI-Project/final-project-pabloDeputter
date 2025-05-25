@@ -1,7 +1,6 @@
+
 import numpy as np
 import pandas as pd
-
-from typing import List, Dict, Union
 from tqdm.auto import tqdm
 
 from .recommender import Recommender
@@ -24,7 +23,7 @@ class Random(Recommender):
         self._rng = np.random.RandomState(random_state)
         self._items = None
 
-    def fit(self, df: pd.DataFrame, item_id_column: str = 'item_id'):
+    def fit(self, df: pd.DataFrame, item_id_column: str = "item_id"):
         """
         Fits the recommender by learning the set of unique item IDs from the input DataFrame.
 
@@ -33,13 +32,12 @@ class Random(Recommender):
         """
         # Sanity check: ensure that required columns exist in the DataFrame
         if item_id_column not in df.columns:
-            raise ValueError(
-                f"Item ID column '{item_id_column}' not found in input DataFrame.")
+            raise ValueError(f"Item ID column '{item_id_column}' not found in input DataFrame.")
 
         self._items = df[item_id_column].unique()
         assert len(self._items) > 0, "No items found in the training data."
 
-    def predict(self, users: List[Union[int, str]], n_items: int = 20) -> Dict[Union[int, str], List[Union[int, str]]]:
+    def predict(self, users: list[int | str], n_items: int = 20) -> dict[int | str, list[int | str]]:
         """
         Predicts random items for each user in the test DataFrame.
 
@@ -51,17 +49,15 @@ class Random(Recommender):
         # Sanity checks
         assert self._items is not None, "The fit method must be called before predict."
 
-        predictions: Dict[Union[int, str], List[Union[int, str]]] = {}
+        predictions: dict[int | str, list[int | str]] = {}
 
         for user_id in tqdm(users, total=len(users), desc="Generating recommendations"):
             # Randomly sample n_items from the available items
             if len(self._items) >= n_items:
-                recommended_items = self._rng.choice(
-                    self._items, size=n_items, replace=False).tolist()
+                recommended_items = self._rng.choice(self._items, size=n_items, replace=False).tolist()
             else:
                 # If there are fewer items than n_items, return all available items
-                recommended_items = self.rng.choice(
-                    self._items, size=len(self._items), replace=False).tolist()
+                recommended_items = self._rng.choice(self._items, size=len(self._items), replace=False).tolist()
 
             predictions[user_id] = recommended_items
 
