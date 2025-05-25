@@ -1,6 +1,6 @@
 # Graph-Based Game Recommendations on Steam
 
-This research project explores graph-based recommendation systems for Steam games, with a focus on Personalized PageRank (PPR). This project compares PPR and its variants (Multi-Alpha PPR, Two-Phase PPR) against traditional algorithms like Item-KNN, using a dataset of user-game interactions. Evaluated under strong generalization for unseen users, the system achieves competitive performance (NDCG@20 ~0.318, Recall@20 ~0.379). This repository contains code, data, and resources to reproduce the findings. The report is available at [report.pdf](report/report.pdf) and the presentation slides at [presentation.pdf](presentation.pdf).
+This research project explores graph-based recommendation systems for Steam games, with a focus on Personalized PageRank (PPR). This project compares PPR and its variants (Multi-Alpha PPR, Two-Phase PPR) against traditional algorithms like Item-KNN, using a dataset of user-game interactions. Evaluated under strong generalization for unseen users, the system achieves competitive performance (NDCG@20 ~0.318, Recall@20 ~0.379). This repository contains code, data, and resources to reproduce the findings. The report is available [here](report/report.pdf) and the presentation slides [here](presentation.pdf).
 
 ## Key Findings
 
